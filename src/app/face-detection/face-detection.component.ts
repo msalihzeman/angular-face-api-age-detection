@@ -12,6 +12,7 @@ import * as faceapi from 'face-api.js';
 export class FaceDetectionComponent implements OnInit {
   @ViewChild('video', { static: true }) videoElement!: ElementRef<HTMLVideoElement>;
   @ViewChild('canvas', { static: true }) canvasElement!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fileInput', { static: true }) fileInput!: ElementRef<HTMLInputElement>;
 
   age: number | null = null;
   mood: string | null = null;
@@ -23,10 +24,6 @@ export class FaceDetectionComponent implements OnInit {
     try {
       await this.loadModels();
       console.log('Models loaded successfully');
-      await this.startVideo();
-      console.log('Video started');
-      this.detect();
-      console.log('Detection started');
     } catch (error) {
       console.error('Error in ngOnInit:', error);
     }
@@ -48,19 +45,48 @@ export class FaceDetectionComponent implements OnInit {
       })
       .catch(err => console.error(err));
   }
+  private loadImage(file: File): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  async detect() {
+    console.log('detect')
+    const input = this.fileInput.nativeElement;
+    const file = input.files?.[0];
 
-  detect() {
-    const video = this.videoElement.nativeElement;
+    if (!file) {
+      console.error('No file selected');
+      return;
+    }
+    console.log(1);
+    const img = await this.loadImage(file);
     const canvas = this.canvasElement.nativeElement;
-    const displaySize = { width: video.width, height: video.height };
+    const context = canvas.getContext('2d');
+
+    // Set canvas size to match the uploaded image
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+    // Draw the image on the canvas
+    context?.drawImage(img, 0, 0);
+    const displaySize = { width: img.width, height: img.height };
     faceapi.matchDimensions(canvas, displaySize);
 
-    this.ngZone.runOutsideAngular(() => {
-      setInterval(async () => {
-        const detections = await faceapi.detectAllFaces(video)
+    this.ngZone.runOutsideAngular(async () => {
+        const detections = await faceapi.detectAllFaces(img)
           .withFaceExpressions()
           .withAgeAndGender();
-
+        console.log('detected: ', detections);
         const resizedDetections = faceapi.resizeResults(detections, displaySize);
         canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
         faceapi.draw.drawDetections(canvas, resizedDetections);
@@ -73,7 +99,6 @@ export class FaceDetectionComponent implements OnInit {
             this.mood = this.getMaxExpression(expressions);
           });
         }
-      }, 100);
     });
   }
 
